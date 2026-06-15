@@ -145,7 +145,7 @@ function App() {
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
-    const ws = new WebSocket('ws://localhost:8000/ws');
+    const ws = new WebSocket('wss://market-scanner-7x1d.onrender.com/ws');
 
     ws.onopen = () => {
       console.log('WebSocket connected');
