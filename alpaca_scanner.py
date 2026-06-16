@@ -344,6 +344,11 @@ def update_active_trades(current_spy_price: float, current_qqq_price: float):
     active_trades[:] = remaining_trades
 
 app = FastAPI()
+
+@app.get("/")
+def health_check():
+    return {"status": "awake", "message": "Scanner is running 24/7"}
+
 active_connections: list[WebSocket] = []
 
 @app.websocket('/ws')
