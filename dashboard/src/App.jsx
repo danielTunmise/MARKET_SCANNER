@@ -143,7 +143,6 @@ function App() {
   const [timeToOpen, setTimeToOpen] = useState('00:00:00');
   const [isMarketOpen, setIsMarketOpen] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
-  const [checklist, setChecklist] = useState([false, false, false, false]);
 
   useEffect(() => {
     const ws = new WebSocket('wss://market-scanner-7x1d.onrender.com/ws');
@@ -217,23 +216,6 @@ function App() {
     return <Activity className="text-gray-400" />;
   };
 
-  // Strict Sequential Checklist Logic
-  const handleCheck = (index) => {
-    setChecklist(prev => {
-      const newChecklist = [...prev];
-      // If we are unchecking, also uncheck all subsequent boxes
-      if (newChecklist[index]) {
-        for (let i = index; i < 4; i++) {
-          newChecklist[i] = false;
-        }
-      } else {
-        // If checking, check only this box
-        newChecklist[index] = true;
-      }
-      return newChecklist;
-    });
-  };
-
   const checklistItems = [
     'New York session open',
     'Identify the current trend',
@@ -241,17 +223,15 @@ function App() {
     'Wait for an ifvg on the 1m time frame'
   ];
 
-  const checkedCount = checklist.filter(Boolean).length;
-  const progress = Math.round((checkedCount / 4) * 100);
-  const allChecked = checklist.every(Boolean);
+  const step1 = isMarketOpen;
+  const step2 = step1 && marketData.shared_trend !== 0;
+  const hasTappedFvg = marketData.spy_active_fvgs?.some(f => f.status.includes('TAPPED')) || marketData.qqq_active_fvgs?.some(f => f.status.includes('TAPPED'));
+  const step3 = step2 && hasTappedFvg;
+  const step4 = step3 && marketData.execution_alerts?.length > 0;
+  const automatedChecklist = [step1, step2, step3, step4];
 
-  const handleExecuteTrade = () => {
-    // Strict execution gate
-    if (!allChecked) return; 
-    
-    // Placeholder core logic for executing the trade alert
-    console.log("Trade execution triggered!");
-  };
+  const checkedCount = automatedChecklist.filter(Boolean).length;
+  const progress = Math.round((checkedCount / 4) * 100);
 
   return (
     <div className="min-h-screen bg-gray-900 text-white p-8 font-sans">
@@ -347,15 +327,15 @@ function App() {
           
           <div className="space-y-2 mb-6">
             {checklistItems.map((text, i) => {
-              const isDisabled = i > 0 && !checklist[i - 1];
+              const isChecked = automatedChecklist[i];
+              const isDisabled = i > 0 && !automatedChecklist[i - 1];
               return (
                 <div 
                   key={i} 
-                  onClick={() => !isDisabled && handleCheck(i)}
-                  className={`flex items-center gap-3 bg-gray-900 border border-gray-700 rounded-lg p-3 group ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-gray-800 transition-colors'}`}
+                  className={`flex items-center gap-3 bg-gray-900 border border-gray-700 rounded-lg p-3 ${isDisabled ? 'opacity-50' : ''}`}
                 >
-                  {checklist[i] ? <CheckSquare className="text-cyan-400 shrink-0" /> : <Square className="text-gray-500 shrink-0" />}
-                  <span className={`text-sm select-none ${checklist[i] ? 'text-gray-400 line-through' : 'text-gray-200'}`}>{text}</span>
+                  {isChecked ? <CheckSquare className="text-cyan-400 shrink-0" /> : <Square className="text-gray-500 shrink-0" />}
+                  <span className={`text-sm select-none ${isChecked ? 'text-gray-400 line-through' : 'text-gray-200'}`}>{text}</span>
                 </div>
               );
             })}
@@ -368,17 +348,15 @@ function App() {
               </div>
               <span className="text-cyan-400 font-bold font-mono text-sm min-w-[80px] text-right">{progress}% READY</span>
             </div>
-            <button
-              onClick={handleExecuteTrade}
-              disabled={!allChecked}
-              className={`px-6 py-2 rounded-lg font-bold transition-all ${
-                allChecked 
-                  ? 'bg-cyan-500 hover:bg-cyan-400 text-gray-900 cursor-pointer shadow-[0_0_15px_rgba(6,182,212,0.4)]' 
-                  : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+            <div
+              className={`px-6 py-2 rounded-lg font-bold transition-all text-center ${
+                step4 
+                  ? 'bg-cyan-500 text-gray-900 shadow-[0_0_15px_rgba(6,182,212,0.4)]' 
+                  : 'bg-gray-700 text-gray-500'
               }`}
             >
-              EXECUTE
-            </button>
+              {step4 ? 'CRITERIA MET - ALGO EXECUTING' : 'AWAITING CRITERIA'}
+            </div>
           </div>
         </motion.div>
 
