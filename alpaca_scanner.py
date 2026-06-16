@@ -457,7 +457,7 @@ async def scanner_task():
                 if shared_trend != 0:
                     if shared_trend != last_alerted_trend:
                         trend_str = "BULLISH" if shared_trend == 1 else "BEARISH"
-                        send_telegram_alert(f"✅ SYSTEM ALIGNED: SPY and QQQ are now {trend_str}.")
+                        send_telegram_alert(f"✅ SYSTEM ALIGNED: es and nq are now {trend_str}.")
                         last_alerted_trend = shared_trend
 
                     spy_tap, spy_active_fvgs = check_active_fvgs(spy_data, shared_trend, "SPY")
