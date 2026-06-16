@@ -2,6 +2,7 @@ import os
 import requests
 import asyncio
 import json
+import pytz
 from datetime import datetime, timedelta
 import pandas as pd
 from dotenv import load_dotenv
@@ -105,6 +106,12 @@ def find_most_recent_trend(df: pd.DataFrame, max_lookback: int = 100) -> str:
             
     return trend
 
+def get_trend(df: pd.DataFrame) -> int:
+    trend = find_most_recent_trend(df, max_lookback=50)
+    if trend == 'BULLISH': return 1
+    if trend == 'BEARISH': return -1
+    return 0
+
 def find_5m_fvgs(df: pd.DataFrame) -> list:
     active_fvgs = []
     
@@ -144,7 +151,7 @@ def find_5m_fvgs(df: pd.DataFrame) -> list:
             
     return active_fvgs[-5:]
 
-def check_active_fvgs(df: pd.DataFrame, aligned_trend: str, symbol: str) -> tuple[bool, list]:
+def check_active_fvgs(df: pd.DataFrame, shared_trend: int, symbol: str) -> tuple[bool, list]:
     fvgs = find_5m_fvgs(df)
     latest_candle = df.iloc[-1]
     
@@ -154,6 +161,12 @@ def check_active_fvgs(df: pd.DataFrame, aligned_trend: str, symbol: str) -> tupl
         
     has_aligned_tap = False
     for fvg in fvgs:
+        # 3. Directional FVG Filter
+        if shared_trend == 1 and fvg['type'] != 'BULLISH':
+            continue
+        if shared_trend == -1 and fvg['type'] != 'BEARISH':
+            continue
+            
         is_tap = False
         is_overrun = False
         
@@ -171,11 +184,8 @@ def check_active_fvgs(df: pd.DataFrame, aligned_trend: str, symbol: str) -> tupl
         if is_overrun:
             status = "Discarded (Overrun)"
         elif is_tap:
-            if fvg['type'] == aligned_trend:
-                status = "TAPPED (Aligned) - 5m FVG Tapped - Ready for 1m Chart Execution"
-                has_aligned_tap = True
-            else:
-                status = "TAPPED (Counter-Trend)"
+            status = "TAPPED (Aligned) - 5m FVG Tapped - Ready for 1m Chart Execution"
+            has_aligned_tap = True
         else:
             status = "Open (Untouched)"
                 
@@ -257,20 +267,21 @@ def calculate_stop_loss(df_1m: pd.DataFrame, direction: str) -> float:
     else:
         return float(df_1m.iloc[-15:]['high'].max())
 
-def check_1m_entry(spy_1m_df: pd.DataFrame, qqq_1m_df: pd.DataFrame, active_5m_trend: str, spy_5m_df: pd.DataFrame, qqq_5m_df: pd.DataFrame) -> list:
+def check_1m_entry(spy_1m_df: pd.DataFrame, qqq_1m_df: pd.DataFrame, shared_trend: int, spy_5m_df: pd.DataFrame, qqq_5m_df: pd.DataFrame) -> list:
     alerts = []
-    if active_5m_trend == 'NONE':
+    if shared_trend == 0:
         return alerts
         
+    active_5m_trend = 'BULLISH' if shared_trend == 1 else 'BEARISH'
     spy_trigger = check_1m_ifvg_on_latest(spy_1m_df, active_5m_trend)
     qqq_trigger = check_1m_ifvg_on_latest(qqq_1m_df, active_5m_trend)
     
     if spy_trigger or qqq_trigger:
         # The Final Safety Check: Recalculate 5m trend immediately
-        spy_trend_now = find_most_recent_trend(spy_5m_df, max_lookback=50)
-        qqq_trend_now = find_most_recent_trend(qqq_5m_df, max_lookback=50)
+        spy_trend_now = get_trend(spy_5m_df)
+        qqq_trend_now = get_trend(qqq_5m_df)
         
-        still_aligned = (spy_trend_now == active_5m_trend) and (qqq_trend_now == active_5m_trend)
+        still_aligned = (spy_trend_now == shared_trend) and (qqq_trend_now == shared_trend)
         
         trigger_df = spy_1m_df if spy_trigger else qqq_1m_df
         symbol = "SPY" if spy_trigger else "QQQ"
@@ -350,12 +361,21 @@ async def scanner_task():
     send_telegram_alert('🚀 Market Scanner Initialized & Telegram Alerts Active!')
     
     has_alerted_open = False
-    last_alerted_trend = 'NONE'
+    last_alerted_trend = 0
     is_currently_tapping = False
+    ny_tz = pytz.timezone('America/New_York')
 
     while True:
         try:
-            ny_time = pd.Timestamp.now(tz='America/New_York').strftime('%H:%M')
+            now_ny = datetime.now(ny_tz)
+            ny_time = now_ny.strftime('%H:%M')
+            
+            # 1. Time Gate (NY Session)
+            if not ('08:00' <= ny_time <= '17:00'):
+                now = datetime.now()
+                seconds_to_sleep = 60 - now.second
+                await asyncio.sleep(seconds_to_sleep)
+                continue
             
             if '09:30' <= ny_time < '16:00':
                 if not has_alerted_open:
@@ -366,30 +386,35 @@ async def scanner_task():
 
             spy_data, qqq_data, spy_1m_df, qqq_1m_df = fetch_alpaca_data()
 
-            spy_trend = find_most_recent_trend(spy_data, max_lookback=50)
-            qqq_trend = find_most_recent_trend(qqq_data, max_lookback=50)
-            aligned_trend = "NONE"
-            if spy_trend == qqq_trend and spy_trend != 'NONE':
-                aligned_trend = spy_trend
+            # 2. Trend Alignment (Index Correlation)
+            spy_trend = get_trend(spy_data)
+            qqq_trend = get_trend(qqq_data)
+            
+            shared_trend = spy_trend if (spy_trend == qqq_trend and spy_trend != 0) else 0
                 
-            if aligned_trend != last_alerted_trend:
-                if aligned_trend != 'NONE':
-                    send_telegram_alert(f"✅ SYSTEM ALIGNED: SPY and QQQ are now {aligned_trend}.")
-                last_alerted_trend = aligned_trend
-
-            spy_tap, spy_active_fvgs = check_active_fvgs(spy_data, aligned_trend, "SPY")
-            qqq_tap, qqq_active_fvgs = check_active_fvgs(qqq_data, aligned_trend, "QQQ")
-
-            if spy_tap or qqq_tap:
-                if not is_currently_tapping:
-                    send_telegram_alert("🎯 ALIGNED TAP DETECTED: 5m FVG touched. Hunting for 1m Inverse FVG...")
-                    is_currently_tapping = True
-            else:
-                is_currently_tapping = False
-
             execution_alerts = []
-            if aligned_trend != 'NONE' and (spy_tap or qqq_tap):
-                execution_alerts = check_1m_entry(spy_1m_df, qqq_1m_df, aligned_trend, spy_data, qqq_data)
+            spy_active_fvgs = []
+            qqq_active_fvgs = []
+
+            if shared_trend != 0:
+                if shared_trend != last_alerted_trend:
+                    trend_str = "BULLISH" if shared_trend == 1 else "BEARISH"
+                    send_telegram_alert(f"✅ SYSTEM ALIGNED: SPY and QQQ are now {trend_str}.")
+                    last_alerted_trend = shared_trend
+
+                spy_tap, spy_active_fvgs = check_active_fvgs(spy_data, shared_trend, "SPY")
+                qqq_tap, qqq_active_fvgs = check_active_fvgs(qqq_data, shared_trend, "QQQ")
+
+                if spy_tap or qqq_tap:
+                    if not is_currently_tapping:
+                        send_telegram_alert("🎯 ALIGNED TAP DETECTED: 5m FVG touched. Hunting for 1m Inverse FVG...")
+                        is_currently_tapping = True
+                    execution_alerts = check_1m_entry(spy_1m_df, qqq_1m_df, shared_trend, spy_data, qqq_data)
+                else:
+                    is_currently_tapping = False
+            else:
+                last_alerted_trend = 0
+                is_currently_tapping = False
 
             current_spy_price = float(spy_1m_df.iloc[-1]['close'])
             current_qqq_price = float(qqq_1m_df.iloc[-1]['close'])
@@ -399,7 +424,7 @@ async def scanner_task():
                 "timestamp": str(datetime.now()),
                 "spy_trend": spy_trend,
                 "qqq_trend": qqq_trend,
-                "aligned_trend": aligned_trend,
+                "shared_trend": shared_trend,
                 "spy_active_fvgs": spy_active_fvgs,
                 "qqq_active_fvgs": qqq_active_fvgs,
                 "execution_alerts": execution_alerts,

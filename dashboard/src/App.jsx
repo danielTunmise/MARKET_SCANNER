@@ -130,9 +130,9 @@ const TradeLedger = ({ activeTrades, tradeHistory }) => {
 
 function App() {
   const [marketData, setMarketData] = useState({
-    spy_trend: 'NONE',
-    qqq_trend: 'NONE',
-    aligned_trend: 'NONE',
+    spy_trend: 0,
+    qqq_trend: 0,
+    shared_trend: 0,
     spy_active_fvgs: [],
     qqq_active_fvgs: [],
     execution_alerts: [],
@@ -211,13 +211,13 @@ function App() {
   }, []);
 
   const TrendIcon = ({ trend }) => {
-    if (trend === 'BULLISH') return <TrendingUp className="text-green-400" />;
-    if (trend === 'BEARISH') return <TrendingDown className="text-red-400" />;
+    if (trend === 1) return <TrendingUp className="text-green-400" />;
+    if (trend === -1) return <TrendingDown className="text-red-400" />;
     return <Activity className="text-gray-400" />;
   };
 
   // Automated Checklist Logic
-  const isTrendIdentified = marketData.aligned_trend !== 'NONE';
+  const isTrendIdentified = marketData.shared_trend !== 0;
   const hasTappedFVG = [...(marketData.spy_active_fvgs || []), ...(marketData.qqq_active_fvgs || [])].some(fvg => fvg.status?.includes('TAPPED'));
   const has1mIFVG = (marketData.execution_alerts?.length || 0) > 0;
 
@@ -254,7 +254,7 @@ function App() {
               <h2 className="text-2xl font-bold text-blue-400">S & P 500</h2>
               <div className="flex items-center gap-2 text-lg font-bold bg-gray-900 px-3 py-1 rounded-lg">
                 <TrendIcon trend={marketData.spy_trend} />
-                {marketData.spy_trend}
+                {marketData.spy_trend === 1 ? 'BULLISH' : marketData.spy_trend === -1 ? 'BEARISH' : 'NONE'}
               </div>
             </div>
             <div className="space-y-3">
@@ -281,7 +281,7 @@ function App() {
               <h2 className="text-2xl font-bold text-purple-400">NASDAQ</h2>
               <div className="flex items-center gap-2 text-lg font-bold bg-gray-900 px-3 py-1 rounded-lg">
                 <TrendIcon trend={marketData.qqq_trend} />
-                {marketData.qqq_trend}
+                {marketData.qqq_trend === 1 ? 'BULLISH' : marketData.qqq_trend === -1 ? 'BEARISH' : 'NONE'}
               </div>
             </div>
             <div className="space-y-3">
@@ -304,8 +304,8 @@ function App() {
         </div>
 
         {/* Alignment Status Bar */}
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={`p-4 rounded-xl text-center font-bold text-lg mb-6 border ${marketData.aligned_trend === 'NONE' ? 'bg-gray-800 border-gray-700 text-gray-400' : marketData.aligned_trend === 'BULLISH' ? 'bg-green-900/30 border-green-500 text-green-400' : 'bg-red-900/30 border-red-500 text-red-400'}`}>
-          {marketData.aligned_trend === 'NONE' ? '⚠ Waiting for Trend Alignment...' : `✅ SYSTEM ALIGNED: ${marketData.aligned_trend} TREND`}
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={`p-4 rounded-xl text-center font-bold text-lg mb-6 border ${marketData.shared_trend === 0 ? 'bg-gray-800 border-gray-700 text-gray-400' : marketData.shared_trend === 1 ? 'bg-green-900/30 border-green-500 text-green-400' : 'bg-red-900/30 border-red-500 text-red-400'}`}>
+          {marketData.shared_trend === 0 ? '⚠ Waiting for Trend Alignment...' : `✅ SYSTEM ALIGNED: ${marketData.shared_trend === 1 ? 'BULLISH' : 'BEARISH'} TREND`}
         </motion.div>
 
         {/* Pre-Trade Checklist & Timer */}
