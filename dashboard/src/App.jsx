@@ -143,6 +143,7 @@ function App() {
   const [timeToOpen, setTimeToOpen] = useState('00:00:00');
   const [isMarketOpen, setIsMarketOpen] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
+  const [checklist, setChecklist] = useState([false, false, false, false]);
 
   useEffect(() => {
     const ws = new WebSocket('wss://market-scanner-7x1d.onrender.com/ws');
@@ -216,20 +217,41 @@ function App() {
     return <Activity className="text-gray-400" />;
   };
 
-  // Automated Checklist Logic
-  const isTrendIdentified = marketData.shared_trend !== 0;
-  const hasTappedFVG = [...(marketData.spy_active_fvgs || []), ...(marketData.qqq_active_fvgs || [])].some(fvg => fvg.status?.includes('TAPPED'));
-  const has1mIFVG = (marketData.execution_alerts?.length || 0) > 0;
+  // Strict Sequential Checklist Logic
+  const handleCheck = (index) => {
+    setChecklist(prev => {
+      const newChecklist = [...prev];
+      // If we are unchecking, also uncheck all subsequent boxes
+      if (newChecklist[index]) {
+        for (let i = index; i < 4; i++) {
+          newChecklist[i] = false;
+        }
+      } else {
+        // If checking, check only this box
+        newChecklist[index] = true;
+      }
+      return newChecklist;
+    });
+  };
 
-  const automatedChecklist = [
-    { text: 'New York session open', checked: isMarketOpen },
-    { text: 'Identify the current trend', checked: isTrendIdentified },
-    { text: 'Wait for fvg to get filled', checked: hasTappedFVG },
-    { text: 'Wait for an ifvg on the 1m time frame', checked: has1mIFVG }
+  const checklistItems = [
+    'New York session open',
+    'Identify the current trend',
+    'Wait for fvg to get filled',
+    'Wait for an ifvg on the 1m time frame'
   ];
 
-  const checkedCount = automatedChecklist.filter(item => item.checked).length;
+  const checkedCount = checklist.filter(Boolean).length;
   const progress = Math.round((checkedCount / 4) * 100);
+  const allChecked = checklist.every(Boolean);
+
+  const handleExecuteTrade = () => {
+    // Strict execution gate
+    if (!allChecked) return; 
+    
+    // Placeholder core logic for executing the trade alert
+    console.log("Trade execution triggered!");
+  };
 
   return (
     <div className="min-h-screen bg-gray-900 text-white p-8 font-sans">
@@ -259,7 +281,9 @@ function App() {
             </div>
             <div className="space-y-3">
               <h3 className="text-gray-400 text-sm font-semibold uppercase tracking-wider">Active 5m FVGs</h3>
-              {marketData.spy_active_fvgs?.length === 0 ? (
+              {(!isMarketOpen || marketData.shared_trend === 0) ? (
+                <p className="text-gray-500 italic">Awaiting trend alignment...</p>
+              ) : marketData.spy_active_fvgs?.length === 0 ? (
                 <p className="text-gray-500 italic">No untouched gaps.</p>
               ) : (
                 marketData.spy_active_fvgs?.map((fvg, i) => (
@@ -286,7 +310,9 @@ function App() {
             </div>
             <div className="space-y-3">
               <h3 className="text-gray-400 text-sm font-semibold uppercase tracking-wider">Active 5m FVGs</h3>
-              {marketData.qqq_active_fvgs?.length === 0 ? (
+              {(!isMarketOpen || marketData.shared_trend === 0) ? (
+                <p className="text-gray-500 italic">Awaiting trend alignment...</p>
+              ) : marketData.qqq_active_fvgs?.length === 0 ? (
                 <p className="text-gray-500 italic">No untouched gaps.</p>
               ) : (
                 marketData.qqq_active_fvgs?.map((fvg, i) => (
@@ -320,12 +346,19 @@ function App() {
           </div>
           
           <div className="space-y-2 mb-6">
-            {automatedChecklist.map((item, i) => (
-              <div key={i} className="flex items-center gap-3 bg-gray-900 border border-gray-700 rounded-lg p-3 group">
-                {item.checked ? <CheckSquare className="text-cyan-400 shrink-0" /> : <Square className="text-gray-500 shrink-0" />}
-                <span className={`text-sm select-none ${item.checked ? 'text-gray-400 line-through' : 'text-gray-200'}`}>{item.text}</span>
-              </div>
-            ))}
+            {checklistItems.map((text, i) => {
+              const isDisabled = i > 0 && !checklist[i - 1];
+              return (
+                <div 
+                  key={i} 
+                  onClick={() => !isDisabled && handleCheck(i)}
+                  className={`flex items-center gap-3 bg-gray-900 border border-gray-700 rounded-lg p-3 group ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-gray-800 transition-colors'}`}
+                >
+                  {checklist[i] ? <CheckSquare className="text-cyan-400 shrink-0" /> : <Square className="text-gray-500 shrink-0" />}
+                  <span className={`text-sm select-none ${checklist[i] ? 'text-gray-400 line-through' : 'text-gray-200'}`}>{text}</span>
+                </div>
+              );
+            })}
           </div>
 
           <div className="flex items-center gap-4 pt-4 border-t border-gray-700">
@@ -335,6 +368,17 @@ function App() {
               </div>
               <span className="text-cyan-400 font-bold font-mono text-sm min-w-[80px] text-right">{progress}% READY</span>
             </div>
+            <button
+              onClick={handleExecuteTrade}
+              disabled={!allChecked}
+              className={`px-6 py-2 rounded-lg font-bold transition-all ${
+                allChecked 
+                  ? 'bg-cyan-500 hover:bg-cyan-400 text-gray-900 cursor-pointer shadow-[0_0_15px_rgba(6,182,212,0.4)]' 
+                  : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+              }`}
+            >
+              EXECUTE
+            </button>
           </div>
         </motion.div>
 

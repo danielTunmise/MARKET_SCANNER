@@ -372,6 +372,31 @@ async def scanner_task():
             
             # 1. Time Gate (NY Session)
             if not ('08:00' <= ny_time <= '17:00'):
+                spy_active_fvgs = []
+                qqq_active_fvgs = []
+                
+                payload = {
+                    "timestamp": str(datetime.now()),
+                    "spy_trend": 0,
+                    "qqq_trend": 0,
+                    "shared_trend": 0,
+                    "spy_active_fvgs": spy_active_fvgs,
+                    "qqq_active_fvgs": qqq_active_fvgs,
+                    "execution_alerts": [],
+                    "active_trades": active_trades,
+                    "trade_history": trade_history
+                }
+                payload_json = json.dumps(payload)
+                
+                disconnected_clients = []
+                for client in active_connections:
+                    try:
+                        await client.send_text(payload_json)
+                    except Exception:
+                        disconnected_clients.append(client)
+                for client in disconnected_clients:
+                    active_connections.remove(client)
+                
                 now = datetime.now()
                 seconds_to_sleep = 60 - now.second
                 await asyncio.sleep(seconds_to_sleep)
@@ -415,6 +440,8 @@ async def scanner_task():
             else:
                 last_alerted_trend = 0
                 is_currently_tapping = False
+                spy_active_fvgs = []
+                qqq_active_fvgs = []
 
             current_spy_price = float(spy_1m_df.iloc[-1]['close'])
             current_qqq_price = float(qqq_1m_df.iloc[-1]['close'])
