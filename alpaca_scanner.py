@@ -305,7 +305,7 @@ def check_1m_entry(spy_1m_df: pd.DataFrame, qqq_1m_df: pd.DataFrame, shared_tren
             }
             active_trades.append(trade)
             
-            msg = f"🟢 EXECUTE TRADE: {direction} at {timestamp} | 1m IFVG Confirmed on {symbol}"
+            msg = f"🟢 EXECUTE TRADE: {direction} at {timestamp} | 1m IFVG Confirmed on {symbol} | SL: {sl:.2f} | TP: {tp:.2f}"
             send_telegram_alert(msg)
             alerts.append(msg)
         else:
@@ -465,7 +465,11 @@ async def scanner_task():
 
                     if spy_tap or qqq_tap:
                         if not is_currently_tapping:
-                            send_telegram_alert("🎯 ALIGNED TAP DETECTED: 5m FVG touched. Hunting for 1m Inverse FVG...")
+                            tapped_assets = []
+                            if spy_tap: tapped_assets.append("SPY")
+                            if qqq_tap: tapped_assets.append("QQQ")
+                            tapped_str = " & ".join(tapped_assets)
+                            send_telegram_alert(f"🎯 ALIGNED TAP DETECTED: {tapped_str} 5m FVG touched. Hunting for 1m Inverse FVG...")
                             is_currently_tapping = True
                         prev_active_count = len(active_trades)
                         execution_alerts = check_1m_entry(spy_1m_df, qqq_1m_df, shared_trend, spy_data, qqq_data)
