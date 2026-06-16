@@ -318,6 +318,7 @@ def check_1m_entry(spy_1m_df: pd.DataFrame, qqq_1m_df: pd.DataFrame, shared_tren
 def update_active_trades(current_spy_price: float, current_qqq_price: float):
     global active_trades, trade_history
     remaining_trades = []
+    completed_messages = []
     
     for trade in active_trades:
         current_price = current_spy_price if trade["asset"] == "SPY" else current_qqq_price
@@ -326,22 +327,27 @@ def update_active_trades(current_spy_price: float, current_qqq_price: float):
             if current_price <= trade["sl"]:
                 trade["status"] = "❌ 1R LOSS"
                 trade_history.append(trade)
+                completed_messages.append(f"❌ TRADE CLOSED: 1R LOSS on {trade['asset']} {trade['direction']} at {current_price:.2f}")
             elif current_price >= trade["tp"]:
                 trade["status"] = "✅ 4R WIN"
                 trade_history.append(trade)
+                completed_messages.append(f"✅ TRADE CLOSED: 4R WIN on {trade['asset']} {trade['direction']} at {current_price:.2f}")
             else:
                 remaining_trades.append(trade)
         else: # SHORT
             if current_price >= trade["sl"]:
                 trade["status"] = "❌ 1R LOSS"
                 trade_history.append(trade)
+                completed_messages.append(f"❌ TRADE CLOSED: 1R LOSS on {trade['asset']} {trade['direction']} at {current_price:.2f}")
             elif current_price <= trade["tp"]:
                 trade["status"] = "✅ 4R WIN"
                 trade_history.append(trade)
+                completed_messages.append(f"✅ TRADE CLOSED: 4R WIN on {trade['asset']} {trade['direction']} at {current_price:.2f}")
             else:
                 remaining_trades.append(trade)
                 
     active_trades[:] = remaining_trades
+    return completed_messages
 
 app = FastAPI()
 
@@ -371,14 +377,31 @@ async def scanner_task():
     is_currently_tapping = False
     ny_tz = pytz.timezone('America/New_York')
 
+    current_date = None
+    trade_executed_today = False
+    shutdown_message_sent_today = False
+
     while True:
         try:
             now_ny = datetime.now(ny_tz)
             ny_time = now_ny.strftime('%H:%M')
+            today_date = now_ny.date()
             is_weekend = now_ny.weekday() >= 5
             
+            if current_date != today_date:
+                current_date = today_date
+                trade_executed_today = False
+                shutdown_message_sent_today = False
+                has_alerted_open = False
+                last_alerted_trend = 0
+                is_currently_tapping = False
+
             # 1. Time Gate (NY Session)
             if is_weekend or not ('09:30' <= ny_time < '16:00'):
+                if current_date == today_date and not shutdown_message_sent_today and not is_weekend and ny_time >= '16:00':
+                    send_telegram_alert('🛑 SYSTEM SHUTDOWN: Market closed. See you tomorrow.')
+                    shutdown_message_sent_today = True
+
                 spy_active_fvgs = []
                 qqq_active_fvgs = []
                 
@@ -417,41 +440,54 @@ async def scanner_task():
 
             spy_data, qqq_data, spy_1m_df, qqq_1m_df = fetch_alpaca_data()
 
-            # 2. Trend Alignment (Index Correlation)
-            spy_trend = get_trend(spy_data)
-            qqq_trend = get_trend(qqq_data)
-            
-            shared_trend = spy_trend if (spy_trend == qqq_trend and spy_trend != 0) else 0
-                
+            spy_trend = 0
+            qqq_trend = 0
+            shared_trend = 0
             execution_alerts = []
             spy_active_fvgs = []
             qqq_active_fvgs = []
 
-            if shared_trend != 0:
-                if shared_trend != last_alerted_trend:
-                    trend_str = "BULLISH" if shared_trend == 1 else "BEARISH"
-                    send_telegram_alert(f"✅ SYSTEM ALIGNED: SPY and QQQ are now {trend_str}.")
-                    last_alerted_trend = shared_trend
+            if not trade_executed_today:
+                # 2. Trend Alignment (Index Correlation)
+                spy_trend = get_trend(spy_data)
+                qqq_trend = get_trend(qqq_data)
+                
+                shared_trend = spy_trend if (spy_trend == qqq_trend and spy_trend != 0) else 0
+                    
+                if shared_trend != 0:
+                    if shared_trend != last_alerted_trend:
+                        trend_str = "BULLISH" if shared_trend == 1 else "BEARISH"
+                        send_telegram_alert(f"✅ SYSTEM ALIGNED: SPY and QQQ are now {trend_str}.")
+                        last_alerted_trend = shared_trend
 
-                spy_tap, spy_active_fvgs = check_active_fvgs(spy_data, shared_trend, "SPY")
-                qqq_tap, qqq_active_fvgs = check_active_fvgs(qqq_data, shared_trend, "QQQ")
+                    spy_tap, spy_active_fvgs = check_active_fvgs(spy_data, shared_trend, "SPY")
+                    qqq_tap, qqq_active_fvgs = check_active_fvgs(qqq_data, shared_trend, "QQQ")
 
-                if spy_tap or qqq_tap:
-                    if not is_currently_tapping:
-                        send_telegram_alert("🎯 ALIGNED TAP DETECTED: 5m FVG touched. Hunting for 1m Inverse FVG...")
-                        is_currently_tapping = True
-                    execution_alerts = check_1m_entry(spy_1m_df, qqq_1m_df, shared_trend, spy_data, qqq_data)
+                    if spy_tap or qqq_tap:
+                        if not is_currently_tapping:
+                            send_telegram_alert("🎯 ALIGNED TAP DETECTED: 5m FVG touched. Hunting for 1m Inverse FVG...")
+                            is_currently_tapping = True
+                        prev_active_count = len(active_trades)
+                        execution_alerts = check_1m_entry(spy_1m_df, qqq_1m_df, shared_trend, spy_data, qqq_data)
+                        if len(active_trades) > prev_active_count:
+                            trade_executed_today = True
+                    else:
+                        is_currently_tapping = False
                 else:
+                    last_alerted_trend = 0
                     is_currently_tapping = False
-            else:
-                last_alerted_trend = 0
-                is_currently_tapping = False
-                spy_active_fvgs = []
-                qqq_active_fvgs = []
 
             current_spy_price = float(spy_1m_df.iloc[-1]['close'])
             current_qqq_price = float(qqq_1m_df.iloc[-1]['close'])
-            update_active_trades(current_spy_price, current_qqq_price)
+            completed_messages = update_active_trades(current_spy_price, current_qqq_price)
+
+            for msg in completed_messages:
+                send_telegram_alert(msg)
+
+            if trade_executed_today and not shutdown_message_sent_today and len(active_trades) == 0:
+                if len(completed_messages) > 0:
+                    send_telegram_alert('🛑 SYSTEM SHUTDOWN: Daily setup completed. System offline until tomorrow.')
+                    shutdown_message_sent_today = True
 
             payload = {
                 "timestamp": str(datetime.now()),
