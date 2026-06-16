@@ -190,6 +190,11 @@ function App() {
       if (nyTime > targetTime) {
         targetTime.setDate(targetTime.getDate() + 1);
       }
+      
+      // Skip weekends
+      while (targetTime.getDay() === 0 || targetTime.getDay() === 6) {
+        targetTime.setDate(targetTime.getDate() + 1);
+      }
 
       const diff = targetTime - nyTime;
       const hours = Math.floor(diff / (1000 * 60 * 60));
@@ -198,7 +203,8 @@ function App() {
 
       const currentHour = nyTime.getHours();
       const currentMinute = nyTime.getMinutes();
-      setIsMarketOpen((currentHour > 9 || (currentHour === 9 && currentMinute >= 30)) && currentHour < 16);
+      const isWeekend = nyTime.getDay() === 0 || nyTime.getDay() === 6;
+      setIsMarketOpen(!isWeekend && (currentHour > 9 || (currentHour === 9 && currentMinute >= 30)) && currentHour < 16);
 
       setTimeToOpen(
         `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`

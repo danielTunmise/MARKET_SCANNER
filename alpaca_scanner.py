@@ -375,9 +375,10 @@ async def scanner_task():
         try:
             now_ny = datetime.now(ny_tz)
             ny_time = now_ny.strftime('%H:%M')
+            is_weekend = now_ny.weekday() >= 5
             
             # 1. Time Gate (NY Session)
-            if not ('08:00' <= ny_time <= '17:00'):
+            if is_weekend or not ('09:30' <= ny_time < '16:00'):
                 spy_active_fvgs = []
                 qqq_active_fvgs = []
                 
@@ -403,17 +404,16 @@ async def scanner_task():
                 for client in disconnected_clients:
                     active_connections.remove(client)
                 
+                has_alerted_open = False
+
                 now = datetime.now()
                 seconds_to_sleep = 60 - now.second
                 await asyncio.sleep(seconds_to_sleep)
                 continue
             
-            if '09:30' <= ny_time < '16:00':
-                if not has_alerted_open:
-                    send_telegram_alert('🔔 NYSE OPEN: Session started, scanning active.')
-                    has_alerted_open = True
-            elif ny_time >= '16:00':
-                has_alerted_open = False
+            if not has_alerted_open:
+                send_telegram_alert('🔔 NYSE OPEN: Session started, scanning active.')
+                has_alerted_open = True
 
             spy_data, qqq_data, spy_1m_df, qqq_1m_df = fetch_alpaca_data()
 
