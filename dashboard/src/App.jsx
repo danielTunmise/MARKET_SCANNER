@@ -141,6 +141,7 @@ function App() {
   });
   
   const [timeToOpen, setTimeToOpen] = useState('00:00:00');
+  const [timerLabel, setTimerLabel] = useState('to NY Open');
   const [isMarketOpen, setIsMarketOpen] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
 
@@ -176,7 +177,7 @@ function App() {
     };
   }, []);
 
-  // New York Session Open Countdown Timer
+  // New York Session Open/Close Countdown Timer
   useEffect(() => {
     const updateTimer = () => {
       const now = new Date();
@@ -184,27 +185,37 @@ function App() {
       const nyTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
       
       const targetTime = new Date(nyTime);
-      targetTime.setHours(9, 30, 0, 0);
 
-      // If it's past 9:30 AM EST, count down to 9:30 AM EST tomorrow
-      if (nyTime > targetTime) {
-        targetTime.setDate(targetTime.getDate() + 1);
-      }
+      const currentHour = nyTime.getHours();
+      const currentMinute = nyTime.getMinutes();
+      const isWeekend = nyTime.getDay() === 0 || nyTime.getDay() === 6;
+      const isMarketOpenNow = !isWeekend && (currentHour > 9 || (currentHour === 9 && currentMinute >= 30)) && currentHour < 16;
       
-      // Skip weekends
-      while (targetTime.getDay() === 0 || targetTime.getDay() === 6) {
-        targetTime.setDate(targetTime.getDate() + 1);
+      setIsMarketOpen(isMarketOpenNow);
+
+      if (isMarketOpenNow) {
+        targetTime.setHours(16, 0, 0, 0);
+        setTimerLabel('to NY Close');
+      } else {
+        targetTime.setHours(9, 30, 0, 0);
+
+        // If it's past 9:30 AM EST, count down to 9:30 AM EST tomorrow
+        if (nyTime > targetTime) {
+          targetTime.setDate(targetTime.getDate() + 1);
+        }
+        
+        // Skip weekends
+        while (targetTime.getDay() === 0 || targetTime.getDay() === 6) {
+          targetTime.setDate(targetTime.getDate() + 1);
+        }
+        
+        setTimerLabel('to NY Open');
       }
 
       const diff = targetTime - nyTime;
       const hours = Math.floor(diff / (1000 * 60 * 60));
       const minutes = Math.floor((diff / 1000 / 60) % 60);
       const seconds = Math.floor((diff / 1000) % 60);
-
-      const currentHour = nyTime.getHours();
-      const currentMinute = nyTime.getMinutes();
-      const isWeekend = nyTime.getDay() === 0 || nyTime.getDay() === 6;
-      setIsMarketOpen(!isWeekend && (currentHour > 9 || (currentHour === 9 && currentMinute >= 30)) && currentHour < 16);
 
       setTimeToOpen(
         `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
@@ -327,7 +338,7 @@ function App() {
             <div className="flex items-center gap-2 text-cyan-400 bg-gray-900 px-3 py-1.5 rounded-lg border border-gray-700">
               <Clock size={18} />
               <span className="font-mono font-bold tracking-wider">{timeToOpen}</span>
-              <span className="text-xs text-gray-500 ml-1 uppercase">to NY Open</span>
+              <span className="text-xs text-gray-500 ml-1 uppercase">{timerLabel}</span>
             </div>
           </div>
           
