@@ -38,7 +38,8 @@ def fetch_alpaca_data() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.Da
     request_params_5m = StockBarsRequest(
         symbol_or_symbols=["SPY", "QQQ"],
         timeframe=TimeFrame(5, TimeFrameUnit.Minute),
-        start=start_time
+        start=start_time,
+        feed="iex"
     )
 
     # Fetch the 5-minute data
@@ -55,7 +56,8 @@ def fetch_alpaca_data() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.Da
     request_params_1m = StockBarsRequest(
         symbol_or_symbols=["SPY", "QQQ"],
         timeframe=TimeFrame(1, TimeFrameUnit.Minute),
-        start=start_time
+        start=start_time,
+        feed="iex"
     )
 
     # Fetch the 1-minute data
