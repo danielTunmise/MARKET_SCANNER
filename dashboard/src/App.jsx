@@ -258,10 +258,13 @@ function App() {
           <h1 className="text-3xl font-bold tracking-tight">TUNMISE's ASSISTANT</h1>
           <p className="text-gray-400 mt-1">SETUP FINDER</p>
         </div>
-        <div className="flex items-center gap-2 bg-gray-800 px-4 py-2 rounded-full">
+        <button 
+          onClick={() => window.location.reload()}
+          className="flex items-center gap-2 bg-gray-800 px-4 py-2 rounded-full hover:bg-gray-700 transition-colors focus:outline-none"
+        >
           <div className={`w-3 h-3 rounded-full animate-pulse ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
           <span className="font-semibold">{isConnected ? 'System Live' : 'Disconnected'}</span>
-        </div>
+        </button>
       </div>
       <main className="max-w-7xl mx-auto space-y-6">
         {/* Main Grid */}
