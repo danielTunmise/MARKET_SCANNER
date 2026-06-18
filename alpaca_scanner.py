@@ -458,8 +458,11 @@ async def scanner_task():
                     
                 if shared_trend != 0:
                     if shared_trend != last_alerted_trend:
+                        if is_currently_tapping:
+                            send_telegram_alert("🛑 HUNT CANCELLED: Trend direction flipped while looking for 1m IFVG.")
+                            is_currently_tapping = False
                         trend_str = "BULLISH" if shared_trend == 1 else "BEARISH"
-                        send_telegram_alert(f"✅ SYSTEM ALIGNED: es and nq are now {trend_str}.")
+                        send_telegram_alert(f"✅ SYSTEM ALIGNED: SPY and QQQ are now {trend_str}.")
                         last_alerted_trend = shared_trend
 
                     spy_tap, spy_active_fvgs = check_active_fvgs(spy_data, shared_trend, "SPY")
@@ -478,9 +481,15 @@ async def scanner_task():
                         if len(active_trades) > prev_active_count:
                             trade_executed_today = True
                     else:
+                        if is_currently_tapping:
+                            send_telegram_alert("🛑 HUNT CANCELLED: Price moved away from 5m FVG. Resuming scan.")
                         is_currently_tapping = False
                 else:
+                    if last_alerted_trend != 0:
+                        send_telegram_alert("⚠️ SYSTEM ALIGNMENT LOST: SPY and QQQ trends are no longer aligned.")
                     last_alerted_trend = 0
+                    if is_currently_tapping:
+                        send_telegram_alert("🛑 HUNT CANCELLED: Trend alignment lost while looking for 1m IFVG.")
                     is_currently_tapping = False
 
             current_spy_price = float(spy_1m_df.iloc[-1]['close'])
