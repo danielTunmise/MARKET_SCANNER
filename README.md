@@ -1,4 +1,4 @@
-# 📈 Market Scanner — SPY/QQQ FVG Setup Finder
+# 📈 Market Scanner: SPY/QQQ FVG Setup Finder
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-WebSocket-teal)
